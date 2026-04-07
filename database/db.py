@@ -18,7 +18,11 @@ def init_db():
     if _db is not None:
         return _db
     connection_string = os.environ.get("MONGODB_CONNECTION_STRING", "mongodb://localhost:27017")
-    client = MongoClient(connection_string)
+    client = MongoClient(
+        connection_string,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=10000,
+    )
     _db = client["instagram_scrapper"]
     logging.info("db:init_db connected to MongoDB")
     return _db
@@ -42,10 +46,10 @@ def update_metadata_profile(artifact_id, display_name, profile_pic):
     logging.info("db:update_metadata_profile artifact %s updated profile", artifact_id)
 
 def update_results(artifact_id, contents):
-    """Upsert a list of content items into the contents collection."""
+    """Insert a list of content items into the contents collection."""
     db = init_db()
     for item in contents:
-        item_doc = dict(item) if hasattr(item, "__dict__") else item
+        item_doc = item if isinstance(item, dict) else vars(item)
         item_doc["artifact_id"] = artifact_id
         db["contents"].insert_one(item_doc)
     logging.info("db:update_results inserted %d items for artifact %s", len(contents), artifact_id)
@@ -71,10 +75,10 @@ def _artifact_with_contents(db, artifact_doc):
     """Join an artifact document with its content items."""
     artifact_id = artifact_doc["_id"]
     contents = list(db["contents"].find({"artifact_id": artifact_id}, {"_id": 0}))
-    artifact_doc["artifact_id"] = artifact_id
-    del artifact_doc["_id"]
-    artifact_doc["contents"] = contents
-    return artifact_doc
+    result = {k: v for k, v in artifact_doc.items() if k != "_id"}
+    result["artifact_id"] = artifact_id
+    result["contents"] = contents
+    return result
 
 
 def get_artifact(artifact_id):

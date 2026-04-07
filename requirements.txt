@@ -4,5 +4,5 @@
 
 azure-functions
 azure-functions-durable
-pydantic
-pymongo
+pydantic>=2.0,<3.0
+pymongo>=4.6,<5.0
