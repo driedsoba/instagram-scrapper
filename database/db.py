@@ -5,6 +5,7 @@ It includes functions for creating artifact metadata, updating results, and upda
 
 import logging
 import os
+from datetime import UTC, datetime
 
 from pymongo import MongoClient
 
@@ -32,6 +33,18 @@ def update_results(artifact_id, content):
     pass
 
 def create_artifact_metadata(artifact_id, case_id, identifier, description) -> None:
-    logging.info("db:create_artifact_metadata was triggered")
-    pass
+    db = init_db()
+    doc = {
+        "_id": artifact_id,
+        "case_id": case_id,
+        "identifier": identifier,
+        "description": description,
+        "platform": "instagram",
+        "status": "processing",
+        "display_name": None,
+        "profile_pic": None,
+        "created_datetime": datetime.now(UTC).isoformat(),
+    }
+    db["artifacts"].insert_one(doc)
+    logging.info("db:create_artifact_metadata inserted artifact %s", artifact_id)
 
