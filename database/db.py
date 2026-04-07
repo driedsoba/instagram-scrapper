@@ -66,3 +66,28 @@ def create_artifact_metadata(artifact_id, case_id, identifier, description) -> N
     db["artifacts"].insert_one(doc)
     logging.info("db:create_artifact_metadata inserted artifact %s", artifact_id)
 
+
+def _artifact_with_contents(db, artifact_doc):
+    """Join an artifact document with its content items."""
+    artifact_id = artifact_doc["_id"]
+    contents = list(db["contents"].find({"artifact_id": artifact_id}, {"_id": 0}))
+    artifact_doc["artifact_id"] = artifact_id
+    del artifact_doc["_id"]
+    artifact_doc["contents"] = contents
+    return artifact_doc
+
+
+def get_artifact(artifact_id):
+    """Fetch a single artifact with its contents. Returns None if not found."""
+    db = init_db()
+    doc = db["artifacts"].find_one({"_id": artifact_id})
+    if doc is None:
+        return None
+    return _artifact_with_contents(db, doc)
+
+
+def get_all_artifacts():
+    """Fetch all artifacts with their contents."""
+    db = init_db()
+    artifacts = list(db["artifacts"].find())
+    return [_artifact_with_contents(db, doc) for doc in artifacts]
