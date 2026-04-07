@@ -131,3 +131,24 @@ def find_active_artifact_by_identifier(identifier):
         return None
     doc["artifact_id"] = doc.pop("_id")
     return doc
+
+
+def create_blob(blob_id, file_path, content_type):
+    """Store a blob record mapping blob_id to a file path and MIME type."""
+    db = init_db()
+    db["blobs"].insert_one({
+        "_id": blob_id,
+        "file_path": file_path,
+        "content_type": content_type,
+    })
+    logging.info("db:create_blob inserted blob %s at %s", blob_id, file_path)
+
+
+def get_blob(blob_id):
+    """Return the blob record for the given blob_id, or None if not found."""
+    db = init_db()
+    doc = db["blobs"].find_one({"_id": blob_id})
+    if doc is None:
+        return None
+    doc["blob_id"] = doc.pop("_id")
+    return doc
