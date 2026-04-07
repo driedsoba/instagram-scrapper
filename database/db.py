@@ -41,9 +41,14 @@ def update_metadata_profile(artifact_id, display_name, profile_pic):
     )
     logging.info("db:update_metadata_profile artifact %s updated profile", artifact_id)
 
-def update_results(artifact_id, content):
-    logging.info("db:update_results was triggered")
-    pass
+def update_results(artifact_id, contents):
+    """Upsert a list of content items into the contents collection."""
+    db = init_db()
+    for item in contents:
+        item_doc = dict(item) if hasattr(item, "__dict__") else item
+        item_doc["artifact_id"] = artifact_id
+        db["contents"].insert_one(item_doc)
+    logging.info("db:update_results inserted %d items for artifact %s", len(contents), artifact_id)
 
 def create_artifact_metadata(artifact_id, case_id, identifier, description) -> None:
     db = init_db()
