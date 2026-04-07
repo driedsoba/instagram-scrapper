@@ -91,3 +91,26 @@ def get_all_artifacts():
     db = init_db()
     artifacts = list(db["artifacts"].find())
     return [_artifact_with_contents(db, doc) for doc in artifacts]
+
+
+def upsert_pagination_cursor(artifact_id, content_type, next_cursor, has_more):
+    """Store or update the pagination cursor for an artifact + content_type pair."""
+    db = init_db()
+    db["pagination_cursors"].update_one(
+        {"artifact_id": artifact_id, "content_type": content_type},
+        {"$set": {"next_cursor": next_cursor, "has_more": has_more}},
+        upsert=True,
+    )
+    logging.info(
+        "db:upsert_pagination_cursor artifact %s content_type %s has_more=%s",
+        artifact_id, content_type, has_more,
+    )
+
+
+def get_pagination_cursor(artifact_id, content_type):
+    """Return the stored cursor doc for an artifact + content_type, or None."""
+    db = init_db()
+    return db["pagination_cursors"].find_one(
+        {"artifact_id": artifact_id, "content_type": content_type},
+        {"_id": 0},
+    )
