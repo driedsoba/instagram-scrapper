@@ -114,3 +114,20 @@ def get_pagination_cursor(artifact_id, content_type):
         {"artifact_id": artifact_id, "content_type": content_type},
         {"_id": 0},
     )
+
+
+def find_active_artifact_by_identifier(identifier):
+    """Return an in-progress artifact for the given identifier, or None.
+
+    An artifact is considered active when its status is 'processing' or
+    'downloading'. This is used for idempotency — if an active artifact
+    already exists we return its artifact_id instead of starting a new job.
+    """
+    db = init_db()
+    doc = db["artifacts"].find_one(
+        {"identifier": identifier, "status": {"$in": ["processing", "downloading"]}},
+    )
+    if doc is None:
+        return None
+    doc["artifact_id"] = doc.pop("_id")
+    return doc
