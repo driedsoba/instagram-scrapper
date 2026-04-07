@@ -25,8 +25,21 @@ def init_db():
 
 
 def update_metadata_status(artifact_id, case_id, status):
-    logging.info("db:update_metadata_status was triggered")
-    pass
+    db = init_db()
+    db["artifacts"].update_one(
+        {"_id": artifact_id, "case_id": case_id},
+        {"$set": {"status": status}},
+    )
+    logging.info("db:update_metadata_status artifact %s -> %s", artifact_id, status)
+
+
+def update_metadata_profile(artifact_id, display_name, profile_pic):
+    db = init_db()
+    db["artifacts"].update_one(
+        {"_id": artifact_id},
+        {"$set": {"display_name": display_name, "profile_pic": profile_pic}},
+    )
+    logging.info("db:update_metadata_profile artifact %s updated profile", artifact_id)
 
 def update_results(artifact_id, content):
     logging.info("db:update_results was triggered")
