@@ -161,18 +161,21 @@ def parse_reels_response(raw: dict) -> tuple[list[dict], str | None]:
     contents = []
 
     for item in items:
-        caption_obj = item.get("caption")
+        # Reels wrap the actual media data inside item["media"]
+        media = item.get("media", item)
+
+        caption_obj = media.get("caption")
         caption = caption_obj.get("text") if isinstance(caption_obj, dict) else None
 
-        taken_at = item.get("taken_at")
+        taken_at = media.get("taken_at")
         dt = datetime.fromtimestamp(taken_at, tz=UTC).isoformat() if taken_at else None
 
-        user = item.get("user", {})
+        user = media.get("user", {})
         owners = [user["username"]] if user.get("username") else []
 
-        video_versions = _as_list(item.get("video_versions"))
+        video_versions = _as_list(media.get("video_versions"))
         video_url = video_versions[0].get("url", "") if video_versions else ""
-        candidates = _as_list(item.get("image_versions2", {}).get("candidates"))
+        candidates = _as_list(media.get("image_versions2", {}).get("candidates"))
         thumbnail_url = candidates[0].get("url") if candidates else None
 
         contents.append({
