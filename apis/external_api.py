@@ -25,7 +25,7 @@ def _make_request(endpoint, params):
     """Make an authenticated GET request to SociaVault and return the JSON response."""
     headers = {"X-API-Key": _get_api_key()}
     url = f"{BASE_URL}/{endpoint}"
-    response = requests.get(url, headers=headers, params=params, timeout=30)
+    response = requests.get(url, headers=headers, params=params, timeout=60)
     response.raise_for_status()
     return response.json()
 
@@ -59,6 +59,15 @@ def fetch_reels(identifier, max_id=None):
 # ---------------------------------------------------------------------------
 
 
+def _as_list(obj) -> list:
+    """Normalize a value that may be a dict-with-string-keys (SociaVault quirk) into a list."""
+    if isinstance(obj, dict):
+        return list(obj.values())
+    if isinstance(obj, list):
+        return obj
+    return []
+
+
 def parse_profile_response(raw: dict) -> dict:
     """Parse SociaVault profile response into spec metadata fields.
 
@@ -77,15 +86,14 @@ def _parse_media_item(item: dict) -> dict:
     has_video = bool(item.get("video_versions"))
     media_type = "video" if has_video else "image"
 
+    candidates = _as_list(item.get("image_versions2", {}).get("candidates"))
+
     if has_video:
-        original_url = item["video_versions"][0]["url"]
-        original_thumbnail_url = (
-            item.get("image_versions2", {}).get("candidates", [{}])[0].get("url")
-        )
+        video_versions = _as_list(item.get("video_versions"))
+        original_url = video_versions[0]["url"] if video_versions else ""
+        original_thumbnail_url = candidates[0].get("url") if candidates else None
     else:
-        original_url = (
-            item.get("image_versions2", {}).get("candidates", [{}])[0].get("url", "")
-        )
+        original_url = candidates[0].get("url", "") if candidates else ""
         original_thumbnail_url = None
 
     return {
@@ -107,7 +115,7 @@ def _parse_post_item(item: dict) -> dict:
     owners = [user["username"]] if user.get("username") else []
 
     # Carousel posts contain multiple media children
-    carousel = item.get("carousel_media")
+    carousel = _as_list(item.get("carousel_media"))
     if carousel:
         media_content = [_parse_media_item(child) for child in carousel]
     else:
@@ -130,7 +138,8 @@ def parse_posts_response(raw: dict) -> tuple[list[dict], str | None]:
     cursor (None if no more pages).
     """
     data = raw.get("data", {})
-    items = data.get("items", [])
+    raw_items = data.get("items", {})
+    items = list(raw_items.values()) if isinstance(raw_items, dict) else raw_items
     contents = [_parse_post_item(item) for item in items]
 
     next_max_id = None
@@ -147,7 +156,8 @@ def parse_reels_response(raw: dict) -> tuple[list[dict], str | None]:
     ArtifactContent-compatible dicts and next_max_id is the pagination cursor.
     """
     data = raw.get("data", {})
-    items = data.get("items", [])
+    raw_items = data.get("items", {})
+    items = list(raw_items.values()) if isinstance(raw_items, dict) else raw_items
     contents = []
 
     for item in items:
@@ -160,12 +170,10 @@ def parse_reels_response(raw: dict) -> tuple[list[dict], str | None]:
         user = item.get("user", {})
         owners = [user["username"]] if user.get("username") else []
 
-        video_url = (
-            item.get("video_versions", [{}])[0].get("url", "")
-        )
-        thumbnail_url = (
-            item.get("image_versions2", {}).get("candidates", [{}])[0].get("url")
-        )
+        video_versions = _as_list(item.get("video_versions"))
+        video_url = video_versions[0].get("url", "") if video_versions else ""
+        candidates = _as_list(item.get("image_versions2", {}).get("candidates"))
+        thumbnail_url = candidates[0].get("url") if candidates else None
 
         contents.append({
             "owners": owners,
