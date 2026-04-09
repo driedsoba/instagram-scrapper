@@ -138,8 +138,7 @@ def parse_posts_response(raw: dict) -> tuple[list[dict], str | None]:
     cursor (None if no more pages).
     """
     data = raw.get("data", {})
-    raw_items = data.get("items", {})
-    items = list(raw_items.values()) if isinstance(raw_items, dict) else raw_items
+    items = _as_list(data.get("items", []))
     contents = [_parse_post_item(item) for item in items]
 
     next_max_id = None
@@ -156,8 +155,7 @@ def parse_reels_response(raw: dict) -> tuple[list[dict], str | None]:
     ArtifactContent-compatible dicts and next_max_id is the pagination cursor.
     """
     data = raw.get("data", {})
-    raw_items = data.get("items", {})
-    items = list(raw_items.values()) if isinstance(raw_items, dict) else raw_items
+    items = _as_list(data.get("items", []))
     contents = []
 
     for item in items:
@@ -173,21 +171,12 @@ def parse_reels_response(raw: dict) -> tuple[list[dict], str | None]:
         user = media.get("user", {})
         owners = [user["username"]] if user.get("username") else []
 
-        video_versions = _as_list(media.get("video_versions"))
-        video_url = video_versions[0].get("url", "") if video_versions else ""
-        candidates = _as_list(media.get("image_versions2", {}).get("candidates"))
-        thumbnail_url = candidates[0].get("url") if candidates else None
-
         contents.append({
             "owners": owners,
             "caption": caption,
             "datetime": dt,
             "content_type": "reel",
-            "media_content": [{
-                "media_type": "video",
-                "original_url": video_url,
-                "original_thumbnail_url": thumbnail_url,
-            }],
+            "media_content": [_parse_media_item(media)],
         })
 
     paging_info = data.get("paging_info", {})
