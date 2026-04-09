@@ -90,7 +90,7 @@ def _parse_media_item(item: dict) -> dict:
 
     if has_video:
         video_versions = _as_list(item.get("video_versions"))
-        original_url = video_versions[0]["url"] if video_versions else ""
+        original_url = video_versions[0].get("url", "") if video_versions else ""
         original_thumbnail_url = candidates[0].get("url") if candidates else None
     else:
         original_url = candidates[0].get("url", "") if candidates else ""
