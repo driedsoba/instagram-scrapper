@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import uuid
+from pathlib import Path
+from urllib.parse import urlparse
 
 import azure.durable_functions as df
+import requests
 from apis.external_api import (
     fetch_profile,
     fetch_posts,
@@ -18,6 +23,8 @@ import database.db as db
 
 api_bp = df.Blueprint()
 
+BLOBS_DIR = Path(__file__).parent / "blobs"
+
 
 @api_bp.orchestration_trigger(context_name="context")
 def polling_orchestrator(context: df.DurableOrchestrationContext):
@@ -27,6 +34,7 @@ def polling_orchestrator(context: df.DurableOrchestrationContext):
         yield context.call_activity("fetchProfile", job)
         yield context.call_activity("fetchPosts", job)
         yield context.call_activity("fetchReels", job)
+        yield context.call_activity("downloadMedia", job)
         yield context.call_activity("updateStatus", {**job, "status": "success"})
     except Exception as e:
         logging.error("polling_orchestrator failed: %s", e)
@@ -83,6 +91,7 @@ def pagination_orchestrator(context: df.DurableOrchestrationContext):
     job = json.loads(context.get_input())
     try:
         yield context.call_activity("fetchPage", job)
+        yield context.call_activity("downloadMedia", job)
         yield context.call_activity("updateStatus", {**job, "status": "success"})
     except Exception as e:
         logging.error("pagination_orchestrator failed: %s", e)
@@ -112,6 +121,113 @@ def fetchPage(jobInfo):
     db.upsert_pagination_cursor(
         artifact_id, content_type, next_max_id, next_max_id is not None
     )
+
+
+@api_bp.activity_trigger(input_name="jobInfo")
+def downloadMedia(jobInfo):
+    """Download media files to local blob storage and update DB with blob URLs."""
+    artifact_id = jobInfo["artifact_id"]
+    logging.info("%s: downloadMedia", artifact_id)
+
+    BLOBS_DIR.mkdir(exist_ok=True)
+    contents = db.get_contents_for_artifact(artifact_id)
+
+    for content_doc in contents:
+        content_id = content_doc["_id"]
+        for idx, mc in enumerate(content_doc.get("media_content", [])):
+            blob_fields = {}
+
+            try:
+                original_url = mc.get("original_url")
+                if original_url and not mc.get("url"):
+                    blob_id, file_path = _download_to_blob(original_url)
+                    mime = _guess_mime(file_path)
+                    db.create_blob(blob_id, file_path, mime)
+                    blob_fields["url"] = f"/api/blob/{blob_id}"
+
+                thumbnail_url = mc.get("original_thumbnail_url")
+                if thumbnail_url and not mc.get("thumbnail_url"):
+                    blob_id, file_path = _download_to_blob(
+                        thumbnail_url, suffix="_thumb"
+                    )
+                    mime = _guess_mime(file_path)
+                    db.create_blob(blob_id, file_path, mime)
+                    blob_fields["thumbnail_url"] = f"/api/blob/{blob_id}"
+            except Exception:
+                logging.exception(
+                    "%s: downloadMedia failed for content=%s idx=%d",
+                    artifact_id,
+                    content_id,
+                    idx,
+                )
+
+            if blob_fields:
+                try:
+                    db.update_content_media_blob(content_id, idx, blob_fields)
+                except Exception:
+                    logging.exception(
+                        "%s: update_content_media_blob failed for content=%s idx=%d",
+                        artifact_id,
+                        content_id,
+                        idx,
+                    )
+
+
+DOWNLOAD_HEADERS = {"User-Agent": "instagram-scrapper/1.0"}
+
+
+def _download_to_blob(url, suffix=""):
+    """Download a URL to the blobs directory. Returns (blob_id, file_path)."""
+    blob_id = uuid.uuid4().hex
+    ext = _extract_extension(url)
+    filename = f"{blob_id}{suffix}{ext}"
+    file_path = str(BLOBS_DIR / filename)
+
+    resp = requests.get(url, headers=DOWNLOAD_HEADERS, timeout=60)
+    resp.raise_for_status()
+    with open(file_path, "wb") as f:
+        f.write(resp.content)
+
+    return blob_id, file_path
+
+
+def _extract_extension(url):
+    """Extract file extension from a URL path, falling back to Content-Type probe."""
+    path = urlparse(url).path
+    _, ext = os.path.splitext(path)
+    if ext:
+        return ext
+
+    content_type_map = {
+        "video": ".mp4",
+        "image": ".jpg",
+        "audio": ".mp3",
+    }
+    try:
+        resp = requests.head(url, timeout=10, allow_redirects=True)
+        ct = resp.headers.get("Content-Type", "")
+        for prefix, default_ext in content_type_map.items():
+            if ct.startswith(prefix + "/"):
+                return default_ext
+    except Exception:
+        logging.warning("HEAD probe failed for %s, falling back to default", url)
+
+    return ".bin"
+
+
+def _guess_mime(file_path):
+    """Guess MIME type from file extension."""
+    ext = os.path.splitext(file_path)[1].lower()
+    mime_map = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".mp4": "video/mp4",
+        ".mov": "video/quicktime",
+    }
+    return mime_map.get(ext, "application/octet-stream")
 
 
 @api_bp.activity_trigger(input_name="jobStatus")

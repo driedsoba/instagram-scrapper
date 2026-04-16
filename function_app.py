@@ -2,6 +2,7 @@ import azure.functions as func
 import azure.durable_functions as df
 import database.db as db
 import json
+import os
 import uuid
 from api_blueprint import api_bp
 import logging
@@ -225,6 +226,10 @@ def _build_media_content(item):
         }
         if mc.get("media_type") == "video":
             entry["original_thumbnail_url"] = mc.get("original_thumbnail_url")
+        if mc.get("url"):
+            entry["url"] = mc["url"]
+        if mc.get("thumbnail_url"):
+            entry["thumbnail_url"] = mc["thumbnail_url"]
         media.append(entry)
     return media
 
@@ -307,6 +312,48 @@ async def get_artifact(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps(_format_artifact(artifact)),
             status_code=200,
             mimetype="application/json",
+        )
+    except Exception as e:
+        logging.error(e)
+        return error_response("Internal server error.", 500)
+
+
+@app.route(
+    route="blob/{blob_id}",
+    auth_level=func.AuthLevel.FUNCTION,
+    methods=["GET"],
+)
+async def get_blob(req: func.HttpRequest) -> func.HttpResponse:
+    """Handle GET /api/blob/{blob_id} -- serve a stored media file."""
+    blob_id = req.route_params.get("blob_id")
+    logging.info("GET /api/blob/%s", blob_id)
+    try:
+        blob = db.get_blob(blob_id)
+        if not blob:
+            return error_response("Blob not found.", 404)
+
+        file_path = os.path.normpath(os.path.abspath(blob["file_path"]))
+        trusted_dir = os.path.normpath(
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "blobs"))
+        )
+        if os.path.commonpath([trusted_dir, file_path]) != trusted_dir:
+            return error_response("Blob file not found.", 404)
+
+        if not os.path.isfile(file_path):
+            return error_response("Blob file not found.", 404)
+
+        def _stream_file(path, chunk_size=65536):
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+
+        return func.HttpResponse(
+            body=b"".join(_stream_file(file_path)),
+            status_code=200,
+            mimetype=blob.get("content_type", "application/octet-stream"),
         )
     except Exception as e:
         logging.error(e)
