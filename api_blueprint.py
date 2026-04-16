@@ -73,6 +73,39 @@ def fetchReels(jobInfo):
     )
 
 
+@api_bp.orchestration_trigger(context_name="context")
+def pagination_orchestrator(context: df.DurableOrchestrationContext):
+    job = json.loads(context.get_input())
+    try:
+        yield context.call_activity("fetchPage", job)
+        yield context.call_activity("updateStatus", {**job, "status": "success"})
+    except Exception as e:
+        logging.error("pagination_orchestrator failed: %s", e)
+        yield context.call_activity("updateStatus", {**job, "status": "failed"})
+        raise
+
+
+@api_bp.activity_trigger(input_name="jobInfo")
+def fetchPage(jobInfo):
+    artifact_id = jobInfo["artifact_id"]
+    identifier = jobInfo["identifier"]
+    content_type = jobInfo["content_type"]
+    max_id = jobInfo["max_id"]
+    logging.info("%s: fetchPage %s (max_id=%s)", artifact_id, content_type, max_id)
+
+    if content_type == "post":
+        raw = fetch_posts(identifier, max_id=max_id)
+        contents, next_max_id = parse_posts_response(raw)
+    else:
+        raw = fetch_reels(identifier, max_id=max_id)
+        contents, next_max_id = parse_reels_response(raw)
+
+    db.update_results(artifact_id, contents)
+    db.upsert_pagination_cursor(
+        artifact_id, content_type, next_max_id, next_max_id is not None
+    )
+
+
 @api_bp.activity_trigger(input_name="jobStatus")
 def updateStatus(jobStatus):
     artifact_id = jobStatus["artifact_id"]

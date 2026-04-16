@@ -101,8 +101,43 @@ async def trigger_download(
             return error_resp
 
         if form == "pagination":
-            # Stub: full implementation in Issue #5
-            return error_response("Pagination not yet implemented.", 501)
+            artifact_id = body["artifact_id"]
+            case_id = body["case_id"]
+            content_type = body["content_type"]
+
+            if content_type not in ("post", "reel"):
+                return error_response(
+                    "Invalid content_type. Must be 'post' or 'reel'.", 400
+                )
+
+            artifact = db.get_artifact(artifact_id)
+            if not artifact or artifact.get("case_id") != case_id:
+                return error_response("Artifact not found.", 404)
+
+            cursor = db.get_pagination_cursor(artifact_id, content_type)
+            if not cursor or not cursor.get("has_more"):
+                return error_response(
+                    f"No more pages available for content_type '{content_type}'.", 400
+                )
+
+            await client.start_new(
+                "pagination_orchestrator",
+                client_input=json.dumps(
+                    {
+                        "artifact_id": artifact_id,
+                        "case_id": case_id,
+                        "identifier": artifact.get("identifier"),
+                        "content_type": content_type,
+                        "max_id": cursor["next_cursor"],
+                    }
+                ),
+            )
+
+            return func.HttpResponse(
+                json.dumps({"artifact_id": artifact_id}),
+                status_code=202,
+                mimetype="application/json",
+            )
 
         case_id = body["case_id"]
         identifier = body["identifier"]
@@ -194,13 +229,25 @@ def _build_contents(artifact):
     ]
 
 
+def _build_has_more_data(artifact):
+    cursors = db.get_pagination_cursors(artifact.get("artifact_id"))
+    return [
+        {"content_type": c["content_type"], "has_more_data": c.get("has_more", False)}
+        for c in cursors
+    ]
+
+
 def _format_artifact(artifact):
-    return {
+    result = {
         "artifact_id": artifact.get("artifact_id"),
         "status": artifact.get("status"),
         "metadata": _build_metadata(artifact),
         "contents": _build_contents(artifact),
     }
+    has_more = _build_has_more_data(artifact)
+    if has_more:
+        result["has_more_data"] = has_more
+    return result
 
 
 @app.route(route="artifacts", auth_level=func.AuthLevel.FUNCTION, methods=["GET"])

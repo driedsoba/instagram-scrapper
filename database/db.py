@@ -130,6 +130,12 @@ def get_pagination_cursor(artifact_id, content_type):
     )
 
 
+def get_pagination_cursors(artifact_id):
+    """Return all pagination cursor docs for an artifact."""
+    db = init_db()
+    return list(db["pagination_cursors"].find({"artifact_id": artifact_id}, {"_id": 0}))
+
+
 def find_active_artifact_by_identifier(identifier):
     """Return an in-progress artifact for the given identifier, or None.
 
