@@ -147,3 +147,93 @@ async def healthcheck(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(
         json.dumps({"message": "success"}), status_code=200, mimetype="application/json"
     )
+
+
+def _build_metadata(artifact):
+    status = artifact.get("status")
+    base = {
+        "platform": artifact.get("platform"),
+        "identifier": artifact.get("identifier"),
+        "description": artifact.get("description"),
+    }
+    if status in ("processing", "downloading"):
+        return base
+    return {
+        **base,
+        "display_name": artifact.get("display_name"),
+        "profile_pic": artifact.get("profile_pic"),
+    }
+
+
+def _build_media_content(item):
+    media = []
+    for mc in item.get("media_content", []):
+        entry = {
+            "media_type": mc.get("media_type"),
+            "original_url": mc.get("original_url"),
+        }
+        if mc.get("media_type") == "video":
+            entry["original_thumbnail_url"] = mc.get("original_thumbnail_url")
+        media.append(entry)
+    return media
+
+
+def _build_contents(artifact):
+    if artifact.get("status") in ("processing", "downloading"):
+        return []
+    return [
+        {
+            "error_message": item.get("error_message"),
+            "owners": item.get("owners"),
+            "caption": item.get("caption"),
+            "datetime": item.get("datetime"),
+            "content_type": item.get("content_type"),
+            "media_content": _build_media_content(item),
+        }
+        for item in artifact.get("contents", [])
+    ]
+
+
+def _format_artifact(artifact):
+    return {
+        "artifact_id": artifact.get("artifact_id"),
+        "status": artifact.get("status"),
+        "metadata": _build_metadata(artifact),
+        "contents": _build_contents(artifact),
+    }
+
+
+@app.route(route="artifacts", auth_level=func.AuthLevel.FUNCTION, methods=["GET"])
+async def get_artifacts(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info("GET /api/artifacts")
+    try:
+        artifacts = db.get_all_artifacts()
+        result = [_format_artifact(a) for a in artifacts]
+        return func.HttpResponse(
+            json.dumps(result), status_code=200, mimetype="application/json"
+        )
+    except Exception as e:
+        logging.error(e)
+        return error_response("Internal server error.", 500)
+
+
+@app.route(
+    route="artifacts/{artifact_id}",
+    auth_level=func.AuthLevel.FUNCTION,
+    methods=["GET"],
+)
+async def get_artifact(req: func.HttpRequest) -> func.HttpResponse:
+    artifact_id = req.route_params.get("artifact_id")
+    logging.info("GET /api/artifacts/%s", artifact_id)
+    try:
+        artifact = db.get_artifact(artifact_id)
+        if not artifact:
+            return error_response("Artifact not found.", 404)
+        return func.HttpResponse(
+            json.dumps(_format_artifact(artifact)),
+            status_code=200,
+            mimetype="application/json",
+        )
+    except Exception as e:
+        logging.error(e)
+        return error_response("Internal server error.", 500)
