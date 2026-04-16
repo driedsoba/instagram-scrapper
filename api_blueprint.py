@@ -49,11 +49,14 @@ def fetchProfile(jobInfo):
     case_id = jobInfo["case_id"]
     identifier = jobInfo["identifier"]
     logging.info("%s: fetchProfile", artifact_id)
-    raw = fetch_profile(identifier)
-    parsed = parse_profile_response(raw)
-    db.update_metadata_profile(
-        artifact_id, parsed["display_name"], parsed["profile_pic"]
-    )
+    try:
+        raw = fetch_profile(identifier)
+        parsed = parse_profile_response(raw)
+        db.update_metadata_profile(
+            artifact_id, parsed["display_name"], parsed["profile_pic"]
+        )
+    except Exception:
+        logging.exception("%s: fetchProfile failed", artifact_id)
     db.update_metadata_status(artifact_id, case_id, "downloading")
 
 
@@ -63,12 +66,28 @@ def fetchPosts(jobInfo):
     artifact_id = jobInfo["artifact_id"]
     identifier = jobInfo["identifier"]
     logging.info("%s: fetchPosts", artifact_id)
-    raw = fetch_posts(identifier)
-    contents, next_max_id = parse_posts_response(raw)
-    db.update_results(artifact_id, contents)
-    db.upsert_pagination_cursor(
-        artifact_id, "post", next_max_id, next_max_id is not None
-    )
+    try:
+        raw = fetch_posts(identifier)
+        contents, next_max_id = parse_posts_response(raw)
+        db.update_results(artifact_id, contents)
+        db.upsert_pagination_cursor(
+            artifact_id, "post", next_max_id, next_max_id is not None
+        )
+    except Exception:
+        logging.exception("%s: fetchPosts failed", artifact_id)
+        db.update_results(
+            artifact_id,
+            [
+                {
+                    "error_message": "Failed to fetch posts",
+                    "content_type": "post",
+                    "owners": [],
+                    "caption": None,
+                    "datetime": None,
+                    "media_content": [],
+                }
+            ],
+        )
 
 
 @api_bp.activity_trigger(input_name="jobInfo")
@@ -77,12 +96,28 @@ def fetchReels(jobInfo):
     artifact_id = jobInfo["artifact_id"]
     identifier = jobInfo["identifier"]
     logging.info("%s: fetchReels", artifact_id)
-    raw = fetch_reels(identifier)
-    contents, next_max_id = parse_reels_response(raw)
-    db.update_results(artifact_id, contents)
-    db.upsert_pagination_cursor(
-        artifact_id, "reel", next_max_id, next_max_id is not None
-    )
+    try:
+        raw = fetch_reels(identifier)
+        contents, next_max_id = parse_reels_response(raw)
+        db.update_results(artifact_id, contents)
+        db.upsert_pagination_cursor(
+            artifact_id, "reel", next_max_id, next_max_id is not None
+        )
+    except Exception:
+        logging.exception("%s: fetchReels failed", artifact_id)
+        db.update_results(
+            artifact_id,
+            [
+                {
+                    "error_message": "Failed to fetch reels",
+                    "content_type": "reel",
+                    "owners": [],
+                    "caption": None,
+                    "datetime": None,
+                    "media_content": [],
+                }
+            ],
+        )
 
 
 @api_bp.orchestration_trigger(context_name="context")
@@ -109,18 +144,34 @@ def fetchPage(jobInfo):
     logging.info("%s: fetchPage %s (max_id=%s)", artifact_id, content_type, max_id)
 
     if content_type == "post":
-        raw = fetch_posts(identifier, max_id=max_id)
-        contents, next_max_id = parse_posts_response(raw)
+        fetch_fn, parse_fn = fetch_posts, parse_posts_response
     elif content_type == "reel":
-        raw = fetch_reels(identifier, max_id=max_id)
-        contents, next_max_id = parse_reels_response(raw)
+        fetch_fn, parse_fn = fetch_reels, parse_reels_response
     else:
         raise ValueError(f"Invalid content_type: {content_type}")
 
-    db.update_results(artifact_id, contents)
-    db.upsert_pagination_cursor(
-        artifact_id, content_type, next_max_id, next_max_id is not None
-    )
+    try:
+        raw = fetch_fn(identifier, max_id=max_id)
+        contents, next_max_id = parse_fn(raw)
+        db.update_results(artifact_id, contents)
+        db.upsert_pagination_cursor(
+            artifact_id, content_type, next_max_id, next_max_id is not None
+        )
+    except Exception:
+        logging.exception("%s: fetchPage %s failed", artifact_id, content_type)
+        db.update_results(
+            artifact_id,
+            [
+                {
+                    "error_message": f"Failed to fetch {content_type} page",
+                    "content_type": content_type,
+                    "owners": [],
+                    "caption": None,
+                    "datetime": None,
+                    "media_content": [],
+                }
+            ],
+        )
 
 
 @api_bp.activity_trigger(input_name="jobInfo")

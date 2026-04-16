@@ -186,12 +186,11 @@ async def trigger_download(
             mimetype="application/json",
         )
 
-    except Exception as e:
-        logging.error(e)
+    except Exception:
+        logging.exception("POST /api/artifacts failed")
         return error_response("Internal server error.", 500)
 
 
-@app.route(route="health", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
 async def healthcheck(req: func.HttpRequest) -> func.HttpResponse:
     """Return a simple health-check response."""
     return func.HttpResponse(
@@ -290,8 +289,8 @@ async def get_artifacts(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps(result), status_code=200, mimetype="application/json"
         )
-    except Exception as e:
-        logging.error(e)
+    except Exception:
+        logging.exception("GET /api/artifacts failed")
         return error_response("Internal server error.", 500)
 
 
@@ -313,8 +312,8 @@ async def get_artifact(req: func.HttpRequest) -> func.HttpResponse:
             status_code=200,
             mimetype="application/json",
         )
-    except Exception as e:
-        logging.error(e)
+    except Exception:
+        logging.exception("GET /api/artifacts/%s failed", artifact_id)
         return error_response("Internal server error.", 500)
 
 
@@ -355,6 +354,6 @@ async def get_blob(req: func.HttpRequest) -> func.HttpResponse:
             status_code=200,
             mimetype=blob.get("content_type", "application/octet-stream"),
         )
-    except Exception as e:
-        logging.error(e)
+    except Exception:
+        logging.exception("GET /api/blob/%s failed", blob_id)
         return error_response("Internal server error.", 500)
