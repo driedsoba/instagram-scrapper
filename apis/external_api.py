@@ -2,6 +2,7 @@
 This module defines the external API controller logic for processing requests and returning results.
 It includes functions for calling the SociaVault API and parsing responses into spec format.
 """
+
 from __future__ import annotations
 
 import logging
@@ -171,15 +172,19 @@ def parse_reels_response(raw: dict) -> tuple[list[dict], str | None]:
         user = media.get("user", {})
         owners = [user["username"]] if user.get("username") else []
 
-        contents.append({
-            "owners": owners,
-            "caption": caption,
-            "datetime": dt,
-            "content_type": "reel",
-            "media_content": [_parse_media_item(media)],
-        })
+        contents.append(
+            {
+                "owners": owners,
+                "caption": caption,
+                "datetime": dt,
+                "content_type": "reel",
+                "media_content": [_parse_media_item(media)],
+            }
+        )
 
     paging_info = data.get("paging_info", {})
-    next_max_id = paging_info.get("max_id") if paging_info.get("more_available", False) else None
+    next_max_id = (
+        paging_info.get("max_id") if paging_info.get("more_available", False) else None
+    )
 
     return contents, next_max_id

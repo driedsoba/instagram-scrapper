@@ -1,86 +1,82 @@
-"""
-This module defines the API blueprint for Azure Durable Functions, including orchestrator and activity functions.
-It handles the orchestration of long-running processes, including triggering external API call and updating results and status in the database.
-"""
-import traceback
-import azure.durable_functions as df
+"""API blueprint for Azure Durable Functions orchestrator and activity functions."""
+
+from __future__ import annotations
+
 import json
 import logging
-from apis import external_api
-from exceptions import APIException
+
+import azure.durable_functions as df
+from apis.external_api import (
+    fetch_profile,
+    fetch_posts,
+    fetch_reels,
+    parse_profile_response,
+    parse_posts_response,
+    parse_reels_response,
+)
 import database.db as db
 
 api_bp = df.Blueprint()
 
 
-def activity_result_output(success, error_message, results=None):
-    return {
-        "success": success,
-        "error_message": str(error_message),
-        "results": results,
-    } if results else {
-        "success": success,
-        "error_message": str(error_message)
-    }
-
-def invalid_execution(results):
-    success = results["success"]
-    if not success:
-        return results["error_message"]
-    return None
-
-
 @api_bp.orchestration_trigger(context_name="context")
 def polling_orchestrator(context: df.DurableOrchestrationContext):
     job = json.loads(context.get_input())
-    case_info = {"artifact_id": job.get("artifact_id"), "case_id": job.get("case_id"), "identifier": job.get("identifier") }
-
-    
-    results = yield context.call_activity(startJob, job) # output of activity_result_output
-
-    if error := invalid_execution(results):
-        job_status = case_info | {"status": "failed"}
-        yield context.call_activity(updateStatus, job_status)
-        return error
-
-    job_status = case_info | {"status": "success"}
-    yield context.call_activity(updateStatus, job_status)
-
-    return "All tasks completed."
+    try:
+        yield context.call_activity("fetchProfile", job)
+        yield context.call_activity("fetchPosts", job)
+        yield context.call_activity("fetchReels", job)
+        yield context.call_activity("updateStatus", {**job, "status": "success"})
+    except Exception as e:
+        logging.error("polling_orchestrator failed: %s", e)
+        yield context.call_activity("updateStatus", {**job, "status": "failed"})
+        raise
 
 
 @api_bp.activity_trigger(input_name="jobInfo")
-def startJob(jobInfo):
-    artifact_id = jobInfo.get("artifact_id")
-    case_id = jobInfo.get("case_id")
-    identifier = jobInfo.get("identifier")
-    processing = True
-    logging.info(f"{artifact_id}:startJob")
-    while processing:
-        logging.info(f"{artifact_id}:calling API")
-        try:
-            resp = external_api.trigger_external(identifier, case_id, artifact_id)
-            if resp["status"] == "success":
-                results = db.update_results(artifact_id, resp["results"])
-                processing = False
-                return activity_result_output(True, None, results)
-            else:
-                status = resp["status"]
-                raise APIException("API call failed.", 500, status, resp.get("error_message", ""))
-        except Exception as e:
-            logging.error(f"{artifact_id}: startJobError: {e}")
-            traceback.print_exception(e)
-            return activity_result_output(False, e, None)
-        
+def fetchProfile(jobInfo):
+    artifact_id = jobInfo["artifact_id"]
+    case_id = jobInfo["case_id"]
+    identifier = jobInfo["identifier"]
+    logging.info("%s: fetchProfile", artifact_id)
+    raw = fetch_profile(identifier)
+    parsed = parse_profile_response(raw)
+    db.update_metadata_profile(
+        artifact_id, parsed["display_name"], parsed["profile_pic"]
+    )
+    db.update_metadata_status(artifact_id, case_id, "downloading")
+
+
+@api_bp.activity_trigger(input_name="jobInfo")
+def fetchPosts(jobInfo):
+    artifact_id = jobInfo["artifact_id"]
+    identifier = jobInfo["identifier"]
+    logging.info("%s: fetchPosts", artifact_id)
+    raw = fetch_posts(identifier)
+    contents, next_max_id = parse_posts_response(raw)
+    db.update_results(artifact_id, contents)
+    db.upsert_pagination_cursor(
+        artifact_id, "post", next_max_id, next_max_id is not None
+    )
+
+
+@api_bp.activity_trigger(input_name="jobInfo")
+def fetchReels(jobInfo):
+    artifact_id = jobInfo["artifact_id"]
+    identifier = jobInfo["identifier"]
+    logging.info("%s: fetchReels", artifact_id)
+    raw = fetch_reels(identifier)
+    contents, next_max_id = parse_reels_response(raw)
+    db.update_results(artifact_id, contents)
+    db.upsert_pagination_cursor(
+        artifact_id, "reel", next_max_id, next_max_id is not None
+    )
+
 
 @api_bp.activity_trigger(input_name="jobStatus")
 def updateStatus(jobStatus):
-    artifact_id = jobStatus.get("artifact_id")
-    case_id = jobStatus.get("case_id")
-    status = jobStatus.get("status")
-    try:
-        db.update_metadata_status(artifact_id, case_id, status)
-        return activity_result_output(True, f"{artifact_id}: updateStatus: Success")
-    except Exception as e:
-        logging.error(f"{artifact_id}: updateStatus: {e}")
-        return activity_result_output(False, f"{artifact_id}: updateStatus: {e}")
+    artifact_id = jobStatus["artifact_id"]
+    case_id = jobStatus["case_id"]
+    status = jobStatus["status"]
+    logging.info("%s: updateStatus -> %s", artifact_id, status)
+    db.update_metadata_status(artifact_id, case_id, status)
