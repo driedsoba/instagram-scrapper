@@ -277,3 +277,9 @@ def update_content_media_blob(content_id, media_index, blob_fields):
     db = init_db()
     set_fields = {f"media_content.{media_index}.{k}": v for k, v in blob_fields.items()}
     db["contents"].update_one({"_id": content_id}, {"$set": set_fields})
+    logging.info(
+        "db:update_content_media_blob content=%s idx=%d fields=%s",
+        content_id,
+        media_index,
+        list(blob_fields.keys()),
+    )

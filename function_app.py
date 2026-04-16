@@ -332,15 +332,26 @@ async def get_blob(req: func.HttpRequest) -> func.HttpResponse:
         if not blob:
             return error_response("Blob not found.", 404)
 
-        file_path = blob["file_path"]
+        file_path = os.path.normpath(os.path.abspath(blob["file_path"]))
+        trusted_dir = os.path.normpath(
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "blobs"))
+        )
+        if os.path.commonpath([trusted_dir, file_path]) != trusted_dir:
+            return error_response("Blob file not found.", 404)
+
         if not os.path.isfile(file_path):
             return error_response("Blob file not found.", 404)
 
-        with open(file_path, "rb") as f:
-            data = f.read()
+        def _stream_file(path, chunk_size=65536):
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
 
         return func.HttpResponse(
-            data,
+            body=b"".join(_stream_file(file_path)),
             status_code=200,
             mimetype=blob.get("content_type", "application/octet-stream"),
         )

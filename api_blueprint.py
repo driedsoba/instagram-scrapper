@@ -137,22 +137,43 @@ def downloadMedia(jobInfo):
         for idx, mc in enumerate(content_doc.get("media_content", [])):
             blob_fields = {}
 
-            original_url = mc.get("original_url")
-            if original_url:
-                blob_id, file_path = _download_to_blob(original_url)
-                mime = _guess_mime(file_path)
-                db.create_blob(blob_id, file_path, mime)
-                blob_fields["url"] = f"/api/blob/{blob_id}"
+            try:
+                original_url = mc.get("original_url")
+                if original_url and not mc.get("url"):
+                    blob_id, file_path = _download_to_blob(original_url)
+                    mime = _guess_mime(file_path)
+                    db.create_blob(blob_id, file_path, mime)
+                    blob_fields["url"] = f"/api/blob/{blob_id}"
 
-            thumbnail_url = mc.get("original_thumbnail_url")
-            if thumbnail_url:
-                blob_id, file_path = _download_to_blob(thumbnail_url, suffix="_thumb")
-                mime = _guess_mime(file_path)
-                db.create_blob(blob_id, file_path, mime)
-                blob_fields["thumbnail_url"] = f"/api/blob/{blob_id}"
+                thumbnail_url = mc.get("original_thumbnail_url")
+                if thumbnail_url and not mc.get("thumbnail_url"):
+                    blob_id, file_path = _download_to_blob(
+                        thumbnail_url, suffix="_thumb"
+                    )
+                    mime = _guess_mime(file_path)
+                    db.create_blob(blob_id, file_path, mime)
+                    blob_fields["thumbnail_url"] = f"/api/blob/{blob_id}"
+            except Exception:
+                logging.exception(
+                    "%s: downloadMedia failed for content=%s idx=%d",
+                    artifact_id,
+                    content_id,
+                    idx,
+                )
 
             if blob_fields:
-                db.update_content_media_blob(content_id, idx, blob_fields)
+                try:
+                    db.update_content_media_blob(content_id, idx, blob_fields)
+                except Exception:
+                    logging.exception(
+                        "%s: update_content_media_blob failed for content=%s idx=%d",
+                        artifact_id,
+                        content_id,
+                        idx,
+                    )
+
+
+DOWNLOAD_HEADERS = {"User-Agent": "instagram-scrapper/1.0"}
 
 
 def _download_to_blob(url, suffix=""):
@@ -162,7 +183,7 @@ def _download_to_blob(url, suffix=""):
     filename = f"{blob_id}{suffix}{ext}"
     file_path = str(BLOBS_DIR / filename)
 
-    resp = requests.get(url, timeout=60)
+    resp = requests.get(url, headers=DOWNLOAD_HEADERS, timeout=60)
     resp.raise_for_status()
     with open(file_path, "wb") as f:
         f.write(resp.content)
@@ -171,10 +192,27 @@ def _download_to_blob(url, suffix=""):
 
 
 def _extract_extension(url):
-    """Extract file extension from a URL path, defaulting to .jpg."""
+    """Extract file extension from a URL path, falling back to Content-Type probe."""
     path = urlparse(url).path
     _, ext = os.path.splitext(path)
-    return ext if ext else ".jpg"
+    if ext:
+        return ext
+
+    content_type_map = {
+        "video": ".mp4",
+        "image": ".jpg",
+        "audio": ".mp3",
+    }
+    try:
+        resp = requests.head(url, timeout=10, allow_redirects=True)
+        ct = resp.headers.get("Content-Type", "")
+        for prefix, default_ext in content_type_map.items():
+            if ct.startswith(prefix + "/"):
+                return default_ext
+    except Exception:
+        logging.warning("HEAD probe failed for %s, falling back to default", url)
+
+    return ".bin"
 
 
 def _guess_mime(file_path):
