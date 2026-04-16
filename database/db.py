@@ -264,3 +264,16 @@ def get_blob(blob_id):
         return None
     doc["blob_id"] = doc.pop("_id")
     return doc
+
+
+def get_contents_for_artifact(artifact_id):
+    """Return all content documents for an artifact, including _id."""
+    db = init_db()
+    return list(db["contents"].find({"artifact_id": artifact_id}))
+
+
+def update_content_media_blob(content_id, media_index, blob_fields):
+    """Update blob URL fields on a specific media_content entry by index."""
+    db = init_db()
+    set_fields = {f"media_content.{media_index}.{k}": v for k, v in blob_fields.items()}
+    db["contents"].update_one({"_id": content_id}, {"$set": set_fields})
