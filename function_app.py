@@ -23,6 +23,7 @@ app.register_blueprint(api_bp)
 
 
 def error_response(response, status_code):
+    """Build a JSON error HttpResponse from a message string or raw bytes."""
     if isinstance(response, bytes):
         payload = response
     else:
@@ -94,6 +95,7 @@ def validate_input(req) -> tuple[bool, None | func.HttpResponse, dict, str]:
 async def trigger_download(
     req: func.HttpRequest, client: df.DurableOrchestrationClient
 ) -> func.HttpResponse:
+    """Handle POST /api/artifacts for new downloads and pagination requests."""
     logging.info("POST /api/artifacts")
     try:
         valid, error_resp, body, form = validate_input(req)
@@ -110,15 +112,26 @@ async def trigger_download(
                     "Invalid content_type. Must be 'post' or 'reel'.", 400
                 )
 
-            artifact = db.get_artifact(artifact_id)
+            artifact = db.get_artifact_metadata(artifact_id)
             if not artifact or artifact.get("case_id") != case_id:
                 return error_response("Artifact not found.", 404)
 
-            cursor = db.get_pagination_cursor(artifact_id, content_type)
-            if not cursor or not cursor.get("has_more"):
-                return error_response(
-                    f"No more pages available for content_type '{content_type}'.", 400
+            claimed = db.claim_pagination_cursor(artifact_id, content_type, None)
+            if not claimed:
+                cursor = db.get_pagination_cursor(artifact_id, content_type)
+                if not cursor or not cursor.get("has_more"):
+                    return error_response(
+                        f"No more pages available for content_type '{content_type}'.",
+                        400,
+                    )
+                claimed = db.claim_pagination_cursor(
+                    artifact_id, content_type, cursor["next_cursor"]
                 )
+                if not claimed:
+                    return error_response(
+                        f"No more pages available for content_type '{content_type}'.",
+                        400,
+                    )
 
             await client.start_new(
                 "pagination_orchestrator",
@@ -128,7 +141,7 @@ async def trigger_download(
                         "case_id": case_id,
                         "identifier": artifact.get("identifier"),
                         "content_type": content_type,
-                        "max_id": cursor["next_cursor"],
+                        "max_id": claimed["next_cursor"],
                     }
                 ),
             )
@@ -179,12 +192,14 @@ async def trigger_download(
 
 @app.route(route="health", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
 async def healthcheck(req: func.HttpRequest) -> func.HttpResponse:
+    """Return a simple health-check response."""
     return func.HttpResponse(
         json.dumps({"message": "success"}), status_code=200, mimetype="application/json"
     )
 
 
 def _build_metadata(artifact):
+    """Build the metadata dict for an artifact based on its status."""
     status = artifact.get("status")
     base = {
         "platform": artifact.get("platform"),
@@ -201,6 +216,7 @@ def _build_metadata(artifact):
 
 
 def _build_media_content(item):
+    """Build the media_content list for a single content item."""
     media = []
     for mc in item.get("media_content", []):
         entry = {
@@ -214,6 +230,7 @@ def _build_media_content(item):
 
 
 def _build_contents(artifact):
+    """Build the contents list for an artifact, empty if still processing."""
     if artifact.get("status") in ("processing", "downloading"):
         return []
     return [
@@ -229,22 +246,25 @@ def _build_contents(artifact):
     ]
 
 
-def _build_has_more_data(artifact):
-    cursors = db.get_pagination_cursors(artifact.get("artifact_id"))
+def _build_has_more_data(cursors):
+    """Build has_more_data list from pre-fetched cursor docs."""
     return [
         {"content_type": c["content_type"], "has_more_data": c.get("has_more", False)}
         for c in cursors
     ]
 
 
-def _format_artifact(artifact):
+def _format_artifact(artifact, cursors=None):
+    """Format an artifact document into the API response shape."""
     result = {
         "artifact_id": artifact.get("artifact_id"),
         "status": artifact.get("status"),
         "metadata": _build_metadata(artifact),
         "contents": _build_contents(artifact),
     }
-    has_more = _build_has_more_data(artifact)
+    if cursors is None:
+        cursors = db.get_pagination_cursors(artifact.get("artifact_id"))
+    has_more = _build_has_more_data(cursors)
     if has_more:
         result["has_more_data"] = has_more
     return result
@@ -252,10 +272,16 @@ def _format_artifact(artifact):
 
 @app.route(route="artifacts", auth_level=func.AuthLevel.FUNCTION, methods=["GET"])
 async def get_artifacts(req: func.HttpRequest) -> func.HttpResponse:
+    """Handle GET /api/artifacts -- return all artifacts as a JSON array."""
     logging.info("GET /api/artifacts")
     try:
         artifacts = db.get_all_artifacts()
-        result = [_format_artifact(a) for a in artifacts]
+        artifact_ids = [a.get("artifact_id") for a in artifacts]
+        cursors_map = db.get_pagination_cursors_batch(artifact_ids)
+        result = [
+            _format_artifact(a, cursors_map.get(a.get("artifact_id"), []))
+            for a in artifacts
+        ]
         return func.HttpResponse(
             json.dumps(result), status_code=200, mimetype="application/json"
         )
@@ -270,6 +296,7 @@ async def get_artifacts(req: func.HttpRequest) -> func.HttpResponse:
     methods=["GET"],
 )
 async def get_artifact(req: func.HttpRequest) -> func.HttpResponse:
+    """Handle GET /api/artifacts/{id} -- return a single artifact or 404."""
     artifact_id = req.route_params.get("artifact_id")
     logging.info("GET /api/artifacts/%s", artifact_id)
     try:

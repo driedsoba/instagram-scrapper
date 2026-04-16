@@ -21,6 +21,7 @@ api_bp = df.Blueprint()
 
 @api_bp.orchestration_trigger(context_name="context")
 def polling_orchestrator(context: df.DurableOrchestrationContext):
+    """Orchestrate the initial scraping pipeline: profile, posts, reels."""
     job = json.loads(context.get_input())
     try:
         yield context.call_activity("fetchProfile", job)
@@ -35,6 +36,7 @@ def polling_orchestrator(context: df.DurableOrchestrationContext):
 
 @api_bp.activity_trigger(input_name="jobInfo")
 def fetchProfile(jobInfo):
+    """Fetch and store the Instagram profile for an artifact."""
     artifact_id = jobInfo["artifact_id"]
     case_id = jobInfo["case_id"]
     identifier = jobInfo["identifier"]
@@ -49,6 +51,7 @@ def fetchProfile(jobInfo):
 
 @api_bp.activity_trigger(input_name="jobInfo")
 def fetchPosts(jobInfo):
+    """Fetch the first page of posts and store results and cursor."""
     artifact_id = jobInfo["artifact_id"]
     identifier = jobInfo["identifier"]
     logging.info("%s: fetchPosts", artifact_id)
@@ -62,6 +65,7 @@ def fetchPosts(jobInfo):
 
 @api_bp.activity_trigger(input_name="jobInfo")
 def fetchReels(jobInfo):
+    """Fetch the first page of reels and store results and cursor."""
     artifact_id = jobInfo["artifact_id"]
     identifier = jobInfo["identifier"]
     logging.info("%s: fetchReels", artifact_id)
@@ -75,6 +79,7 @@ def fetchReels(jobInfo):
 
 @api_bp.orchestration_trigger(context_name="context")
 def pagination_orchestrator(context: df.DurableOrchestrationContext):
+    """Orchestrate a single pagination fetch for posts or reels."""
     job = json.loads(context.get_input())
     try:
         yield context.call_activity("fetchPage", job)
@@ -87,6 +92,7 @@ def pagination_orchestrator(context: df.DurableOrchestrationContext):
 
 @api_bp.activity_trigger(input_name="jobInfo")
 def fetchPage(jobInfo):
+    """Fetch the next page of posts or reels using a stored cursor."""
     artifact_id = jobInfo["artifact_id"]
     identifier = jobInfo["identifier"]
     content_type = jobInfo["content_type"]
@@ -96,9 +102,11 @@ def fetchPage(jobInfo):
     if content_type == "post":
         raw = fetch_posts(identifier, max_id=max_id)
         contents, next_max_id = parse_posts_response(raw)
-    else:
+    elif content_type == "reel":
         raw = fetch_reels(identifier, max_id=max_id)
         contents, next_max_id = parse_reels_response(raw)
+    else:
+        raise ValueError(f"Invalid content_type: {content_type}")
 
     db.update_results(artifact_id, contents)
     db.upsert_pagination_cursor(
@@ -108,6 +116,7 @@ def fetchPage(jobInfo):
 
 @api_bp.activity_trigger(input_name="jobStatus")
 def updateStatus(jobStatus):
+    """Update the status field of an artifact in the database."""
     artifact_id = jobStatus["artifact_id"]
     case_id = jobStatus["case_id"]
     status = jobStatus["status"]

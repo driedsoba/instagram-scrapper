@@ -31,6 +31,7 @@ def init_db():
 
 
 def update_metadata_status(artifact_id, case_id, status):
+    """Set the status field of an artifact document."""
     db = init_db()
     db["artifacts"].update_one(
         {"_id": artifact_id, "case_id": case_id},
@@ -40,6 +41,7 @@ def update_metadata_status(artifact_id, case_id, status):
 
 
 def update_metadata_profile(artifact_id, display_name, profile_pic):
+    """Update the display_name and profile_pic fields of an artifact."""
     db = init_db()
     db["artifacts"].update_one(
         {"_id": artifact_id},
@@ -63,6 +65,7 @@ def update_results(artifact_id, contents):
 
 
 def create_artifact_metadata(artifact_id, case_id, identifier, description) -> None:
+    """Insert a new artifact metadata document with processing status."""
     db = init_db()
     doc = {
         "_id": artifact_id,
@@ -131,16 +134,65 @@ def get_pagination_cursor(artifact_id, content_type):
 
 
 def get_pagination_cursors(artifact_id):
-    """Return all pagination cursor docs for an artifact."""
+    """Return all pagination cursor docs for an artifact, sorted by content_type."""
     db = init_db()
-    return list(db["pagination_cursors"].find({"artifact_id": artifact_id}, {"_id": 0}))
+    return list(
+        db["pagination_cursors"]
+        .find({"artifact_id": artifact_id}, {"_id": 0})
+        .sort("content_type", 1)
+    )
+
+
+def get_pagination_cursors_batch(artifact_ids):
+    """Return all pagination cursors for a list of artifact IDs, grouped by artifact_id."""
+    db = init_db()
+    docs = list(
+        db["pagination_cursors"]
+        .find({"artifact_id": {"$in": artifact_ids}}, {"_id": 0})
+        .sort("content_type", 1)
+    )
+    result = {}
+    for doc in docs:
+        result.setdefault(doc["artifact_id"], []).append(doc)
+    return result
+
+
+def claim_pagination_cursor(artifact_id, content_type, expected_cursor):
+    """Atomically claim a pagination cursor if it matches the expected value.
+
+    Uses find_one_and_update to atomically match on (artifact_id, content_type,
+    next_cursor, has_more=True) and set has_more=False to prevent concurrent
+    claims. Returns the matched document (pre-update) or None if no match.
+    """
+    db = init_db()
+    doc = db["pagination_cursors"].find_one_and_update(
+        {
+            "artifact_id": artifact_id,
+            "content_type": content_type,
+            "next_cursor": expected_cursor,
+            "has_more": True,
+        },
+        {"$set": {"has_more": False}},
+    )
+    return doc
+
+
+def get_artifact_metadata(artifact_id):
+    """Fetch only artifact metadata (no contents). Returns None if not found."""
+    db = init_db()
+    doc = db["artifacts"].find_one({"_id": artifact_id})
+    if doc is None:
+        return None
+    result = {k: v for k, v in doc.items() if k != "_id"}
+    result["artifact_id"] = doc["_id"]
+    return result
 
 
 def find_active_artifact_by_identifier(identifier):
     """Return an in-progress artifact for the given identifier, or None.
 
     An artifact is considered active when its status is 'processing' or
-    'downloading'. This is used for idempotency — if an active artifact
+    'downloading'. This is used for idempotency -- if an active artifact
     already exists we return its artifact_id instead of starting a new job.
     """
     db = init_db()
@@ -170,7 +222,7 @@ def claim_or_get_active_artifact(artifact_id, case_id, identifier, description):
     if existing:
         return existing["_id"], False
 
-    # No active artifact — insert with a unique _id.
+    # No active artifact - insert with a unique _id.
     # If a concurrent request inserted between our read and write,
     # the insert will fail due to _id uniqueness (caller retries via the
     # duplicate key path) or we just fall back to the find above on retry.
