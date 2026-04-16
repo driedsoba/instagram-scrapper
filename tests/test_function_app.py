@@ -111,7 +111,7 @@ class TestFormatArtifact:
             "description": "test",
         }
         result = _format_artifact(artifact)
-        assert result["artifact_id"] == "a1"
+        assert "artifact_id" not in result
         assert result["status"] == "processing"
         assert "metadata" in result
         assert "contents" in result

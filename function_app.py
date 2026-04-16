@@ -240,7 +240,7 @@ def _build_contents(artifact):
         return []
     return [
         {
-            "error_message": item.get("error_message"),
+            "error_message": item.get("error_message", ""),
             "owners": item.get("owners"),
             "caption": item.get("caption"),
             "datetime": item.get("datetime"),
@@ -262,7 +262,6 @@ def _build_has_more_data(cursors):
 def _format_artifact(artifact, cursors=None):
     """Format an artifact document into the API response shape."""
     result = {
-        "artifact_id": artifact.get("artifact_id"),
         "status": artifact.get("status"),
         "metadata": _build_metadata(artifact),
         "contents": _build_contents(artifact),
