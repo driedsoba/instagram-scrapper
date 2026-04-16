@@ -1,6 +1,7 @@
 """
 This module defines the data models for artifact metadata and content using Pydantic.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -24,7 +25,7 @@ class MediaContent(BaseModel):
     media_type: str  # "image" or "video"
     original_url: str
     original_thumbnail_url: str | None = None  # videos only
-    url: str | None = None           # set after blob download
+    url: str | None = None  # set after blob download
     thumbnail_url: str | None = None  # set after blob download
 
 

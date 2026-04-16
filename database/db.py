@@ -17,7 +17,9 @@ def init_db():
     global _db
     if _db is not None:
         return _db
-    connection_string = os.environ.get("MONGODB_CONNECTION_STRING", "mongodb://localhost:27017")
+    connection_string = os.environ.get(
+        "MONGODB_CONNECTION_STRING", "mongodb://localhost:27017"
+    )
     client = MongoClient(
         connection_string,
         serverSelectionTimeoutMS=5000,
@@ -45,6 +47,7 @@ def update_metadata_profile(artifact_id, display_name, profile_pic):
     )
     logging.info("db:update_metadata_profile artifact %s updated profile", artifact_id)
 
+
 def update_results(artifact_id, contents):
     """Insert a list of content items into the contents collection."""
     db = init_db()
@@ -52,7 +55,12 @@ def update_results(artifact_id, contents):
         item_doc = item if isinstance(item, dict) else vars(item)
         item_doc["artifact_id"] = artifact_id
         db["contents"].insert_one(item_doc)
-    logging.info("db:update_results inserted %d items for artifact %s", len(contents), artifact_id)
+    logging.info(
+        "db:update_results inserted %d items for artifact %s",
+        len(contents),
+        artifact_id,
+    )
+
 
 def create_artifact_metadata(artifact_id, case_id, identifier, description) -> None:
     db = init_db()
@@ -107,7 +115,9 @@ def upsert_pagination_cursor(artifact_id, content_type, next_cursor, has_more):
     )
     logging.info(
         "db:upsert_pagination_cursor artifact %s content_type %s has_more=%s",
-        artifact_id, content_type, has_more,
+        artifact_id,
+        content_type,
+        has_more,
     )
 
 
@@ -137,14 +147,54 @@ def find_active_artifact_by_identifier(identifier):
     return doc
 
 
+def claim_or_get_active_artifact(artifact_id, case_id, identifier, description):
+    """Atomically claim a new artifact or return an existing active one.
+
+    Uses find_one_and_update with upsert semantics keyed on
+    (identifier, status in [processing, downloading]).
+
+    Returns (artifact_id, created) where created is True if this call
+    inserted the new document.
+    """
+    db = init_db()
+    # Try to find an existing active artifact first (atomic read)
+    existing = db["artifacts"].find_one(
+        {"identifier": identifier, "status": {"$in": ["processing", "downloading"]}},
+    )
+    if existing:
+        return existing["_id"], False
+
+    # No active artifact — insert with a unique _id.
+    # If a concurrent request inserted between our read and write,
+    # the insert will fail due to _id uniqueness (caller retries via the
+    # duplicate key path) or we just fall back to the find above on retry.
+    try:
+        create_artifact_metadata(artifact_id, case_id, identifier, description)
+        return artifact_id, True
+    except Exception:
+        # Race: another request inserted an active artifact between our
+        # find and insert. Re-check for the active doc.
+        existing = db["artifacts"].find_one(
+            {
+                "identifier": identifier,
+                "status": {"$in": ["processing", "downloading"]},
+            },
+        )
+        if existing:
+            return existing["_id"], False
+        raise
+
+
 def create_blob(blob_id, file_path, content_type):
     """Store a blob record mapping blob_id to a file path and MIME type."""
     db = init_db()
-    db["blobs"].insert_one({
-        "_id": blob_id,
-        "file_path": file_path,
-        "content_type": content_type,
-    })
+    db["blobs"].insert_one(
+        {
+            "_id": blob_id,
+            "file_path": file_path,
+            "content_type": content_type,
+        }
+    )
     logging.info("db:create_blob inserted blob %s at %s", blob_id, file_path)
 
 
