@@ -191,6 +191,7 @@ async def trigger_download(
         return error_response("Internal server error.", 500)
 
 
+@app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 async def healthcheck(req: func.HttpRequest) -> func.HttpResponse:
     """Return a simple health-check response."""
     return func.HttpResponse(

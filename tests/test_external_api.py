@@ -125,3 +125,14 @@ class TestFetchProfile:
         _, kwargs = mock_get.call_args
         assert kwargs["headers"]["X-API-Key"] == "test-api-key"
         assert kwargs["params"]["handle"] == "testuser"
+
+    @patch("apis.external_api.requests.get")
+    def test_propagates_http_error(self, mock_get):
+        import requests as req_lib
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = req_lib.HTTPError()
+        mock_get.return_value = mock_resp
+
+        with pytest.raises(req_lib.HTTPError):
+            fetch_profile("testuser")

@@ -24,6 +24,7 @@ class TestFetchPostsActivity:
         args = mock_db.update_results.call_args
         assert args[0][1][0]["error_message"] == "Failed to fetch posts"
         assert args[0][1][0]["content_type"] == "post"
+        mock_db.upsert_pagination_cursor.assert_not_called()
 
 
 class TestFetchReelsActivity:
