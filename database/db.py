@@ -71,7 +71,7 @@ def update_results(artifact_id, contents):
     db = init_db()
     docs = []
     for item in contents:
-        item_doc = item if isinstance(item, dict) else vars(item)
+        item_doc = dict(item) if isinstance(item, dict) else vars(item).copy()
         item_doc["artifact_id"] = artifact_id
         docs.append(item_doc)
     db["contents"].insert_many(docs)
