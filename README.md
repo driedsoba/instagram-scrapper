@@ -1,5 +1,9 @@
 # Instagram Scrapper
 
+![CI](https://github.com/driedsoba/instagram-scrapper/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.13-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 An Azure Durable Functions application that scrapes Instagram profiles, posts, and reels via the [SociaVault](https://sociavault.com/) API. It downloads media files and stores metadata in MongoDB.
 
 ## Design Considerations
