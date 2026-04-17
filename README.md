@@ -138,7 +138,7 @@ Downloaded media is bind-mounted to `./blobs/` on the host, so files survive con
 
 ## Running Tests
 
-Tests run on the host (or in CI) with `mongomock`. No live MongoDB needed.
+Tests run on the host (or in CI) with `mongomock`.
 
 **macOS / Linux:**
 
