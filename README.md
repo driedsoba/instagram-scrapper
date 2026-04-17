@@ -58,8 +58,6 @@ See [docs/api.md](docs/api.md) for full API documentation with request/response 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - A [SociaVault](https://sociavault.com/) API key
 
-That's it. No local Python, no Azure Functions Core Tools, no MongoDB install.
-
 ## Quickstart
 
 ### 1. Clone and add your API key
