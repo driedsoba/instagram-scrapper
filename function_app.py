@@ -341,16 +341,11 @@ async def get_blob(req: func.HttpRequest) -> func.HttpResponse:
         if not os.path.isfile(file_path):
             return error_response("Blob file not found.", 404)
 
-        def _stream_file(path, chunk_size=65536):
-            with open(path, "rb") as f:
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
+        with open(file_path, "rb") as f:
+            body = f.read()
 
         return func.HttpResponse(
-            body=b"".join(_stream_file(file_path)),
+            body=body,
             status_code=200,
             mimetype=blob.get("content_type", "application/octet-stream"),
         )
