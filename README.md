@@ -12,15 +12,7 @@ An Azure Durable Functions application that scrapes Instagram profiles, posts, a
 
 ## Architecture
 
-```
-POST /api/artifacts ──► polling_orchestrator
-                            │
-                            ├─ fetchProfile
-                            ├─ fetchPosts
-                            ├─ fetchReels
-                            ├─ downloadMedia  ──► blobs/ (local files)
-                            └─ updateStatus   ──► MongoDB
-```
+![Architecture](docs/Architecture.png)
 
 1. Fetches the Instagram profile info (display name, profile picture)
 2. Fetches recent posts and reels
@@ -66,8 +58,6 @@ See [docs/api.md](docs/api.md) for full API documentation with request/response 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - A [SociaVault](https://sociavault.com/) API key
 
-That's it. No local Python, no Azure Functions Core Tools, no MongoDB install.
-
 ## Quickstart
 
 ### 1. Clone and add your API key
@@ -109,7 +99,12 @@ curl http://localhost:7071/api/health
 curl -X POST http://localhost:7071/api/artifacts \
   -H "Content-Type: application/json" \
   -d '{"case_id":"test-001","identifier":"mothershipsg","description":"Test scrape"}'
-# → {"artifact_id": "<id>"}
+# returns {"artifact_id": "<id>"}
+
+# Request the next page of posts (or "reel") for an existing artifact
+curl -X POST http://localhost:7071/api/artifacts \
+  -H "Content-Type: application/json" \
+  -d '{"case_id":"test-001","artifact_id":"<artifact_id>","content_type":"post"}'
 
 # Poll for status
 curl http://localhost:7071/api/artifacts/<artifact_id>
