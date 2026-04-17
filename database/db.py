@@ -26,8 +26,22 @@ def init_db():
         connectTimeoutMS=10000,
     )
     _db = client["instagram_scrapper"]
+    _ensure_indexes(_db)
     logging.info("db:init_db connected to MongoDB")
     return _db
+
+
+def _ensure_indexes(db):
+    """Create indexes used by hot-path queries. Idempotent."""
+    db["artifacts"].create_index(
+        [("identifier", 1), ("status", 1)], name="identifier_status"
+    )
+    db["contents"].create_index("artifact_id", name="artifact_id")
+    db["pagination_cursors"].create_index(
+        [("artifact_id", 1), ("content_type", 1)],
+        name="artifact_id_content_type",
+        unique=True,
+    )
 
 
 def update_metadata_status(artifact_id, case_id, status):
@@ -52,14 +66,18 @@ def update_metadata_profile(artifact_id, display_name, profile_pic):
 
 def update_results(artifact_id, contents):
     """Insert a list of content items into the contents collection."""
+    if not contents:
+        return
     db = init_db()
+    docs = []
     for item in contents:
         item_doc = item if isinstance(item, dict) else vars(item)
         item_doc["artifact_id"] = artifact_id
-        db["contents"].insert_one(item_doc)
+        docs.append(item_doc)
+    db["contents"].insert_many(docs)
     logging.info(
         "db:update_results inserted %d items for artifact %s",
-        len(contents),
+        len(docs),
         artifact_id,
     )
 
@@ -102,10 +120,22 @@ def get_artifact(artifact_id):
 
 
 def get_all_artifacts():
-    """Fetch all artifacts with their contents."""
+    """Fetch all artifacts with their contents in a single contents query."""
     db = init_db()
     artifacts = list(db["artifacts"].find())
-    return [_artifact_with_contents(db, doc) for doc in artifacts]
+    if not artifacts:
+        return []
+    artifact_ids = [a["_id"] for a in artifacts]
+    contents_by_artifact = {aid: [] for aid in artifact_ids}
+    for c in db["contents"].find({"artifact_id": {"$in": artifact_ids}}, {"_id": 0}):
+        contents_by_artifact.setdefault(c["artifact_id"], []).append(c)
+    results = []
+    for doc in artifacts:
+        result = {k: v for k, v in doc.items() if k != "_id"}
+        result["artifact_id"] = doc["_id"]
+        result["contents"] = contents_by_artifact.get(doc["_id"], [])
+        results.append(result)
+    return results
 
 
 def upsert_pagination_cursor(artifact_id, content_type, next_cursor, has_more):

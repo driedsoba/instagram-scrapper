@@ -44,8 +44,6 @@ See [docs/api.md](docs/api.md) for full API documentation with request/response 
 │   └── external_api.py      # SociaVault API client and response parsers
 ├── database/
 │   └── db.py                # MongoDB persistence layer
-├── models/
-│   └── artifact.py          # Pydantic data models
 ├── tests/                   # Unit tests (pytest + mongomock)
 ├── Dockerfile               # Container image for Azure deployment
 ├── host.json                # Azure Functions host configuration
