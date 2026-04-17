@@ -17,5 +17,5 @@ README.md
 local.settings.json
 docs
 tests
-test*
+test_*.py
 blobs

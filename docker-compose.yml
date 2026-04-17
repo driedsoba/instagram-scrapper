@@ -28,6 +28,11 @@ services:
       - "10002:10002"
     volumes:
       - azurite_data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "10000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   functions:
     build:
@@ -49,7 +54,7 @@ services:
       mongodb:
         condition: service_healthy
       azurite:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   mongodb_data:
