@@ -91,7 +91,7 @@ def validate_input(req) -> tuple[bool, None | func.HttpResponse, dict, str]:
     )
 
 
-@app.route(route="artifacts", auth_level=func.AuthLevel.FUNCTION, methods=["POST"])
+@app.route(route="artifacts", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 @app.durable_client_input(client_name="client")
 async def trigger_download(
     req: func.HttpRequest, client: df.DurableOrchestrationClient
@@ -274,7 +274,7 @@ def _format_artifact(artifact, cursors=None):
     return result
 
 
-@app.route(route="artifacts", auth_level=func.AuthLevel.FUNCTION, methods=["GET"])
+@app.route(route="artifacts", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
 async def get_artifacts(req: func.HttpRequest) -> func.HttpResponse:
     """Handle GET /api/artifacts -- return all artifacts as a JSON array."""
     logging.info("GET /api/artifacts")
@@ -296,7 +296,7 @@ async def get_artifacts(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(
     route="artifacts/{artifact_id}",
-    auth_level=func.AuthLevel.FUNCTION,
+    auth_level=func.AuthLevel.ANONYMOUS,
     methods=["GET"],
 )
 async def get_artifact(req: func.HttpRequest) -> func.HttpResponse:
@@ -319,7 +319,7 @@ async def get_artifact(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(
     route="blob/{blob_id}",
-    auth_level=func.AuthLevel.FUNCTION,
+    auth_level=func.AuthLevel.ANONYMOUS,
     methods=["GET"],
 )
 async def get_blob(req: func.HttpRequest) -> func.HttpResponse:
