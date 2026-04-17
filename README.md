@@ -146,6 +146,7 @@ Tests run on the host (or in CI) with `mongomock`. No live MongoDB needed.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
+pre-commit install
 pytest
 ```
 
@@ -155,6 +156,7 @@ pytest
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements-dev.txt
+pre-commit install
 pytest
 ```
 
@@ -164,6 +166,7 @@ pytest
 python -m venv .venv
 source .venv/Scripts/activate
 pip install -r requirements-dev.txt
+pre-commit install
 pytest
 ```
 
