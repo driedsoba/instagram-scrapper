@@ -66,7 +66,7 @@ See [docs/api.md](docs/api.md) for full API documentation with request/response 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - A [SociaVault](https://sociavault.com/) API key
 
-That's it — no local Python, no Azure Functions Core Tools, no MongoDB install.
+That's it. No local Python, no Azure Functions Core Tools, no MongoDB install.
 
 ## Quickstart
 
@@ -134,14 +134,14 @@ Downloaded media is bind-mounted to `./blobs/` on the host, so files survive con
 
 | Variable | Where it's set | Default |
 | --- | --- | --- |
-| `SOCIAVAULT_API_KEY` | `.env` (required) | — |
+| `SOCIAVAULT_API_KEY` | `.env` (required) | (none) |
 | `MONGODB_CONNECTION_STRING` | `docker-compose.yml` | `mongodb://mongodb:27017` |
 | `AzureWebJobsStorage` | `docker-compose.yml` | Azurite well-known string |
 | `WEBSITE_HOSTNAME` | `docker-compose.yml` | `localhost:80` (Durable Functions internal webhook target) |
 
 ## Running Tests
 
-Tests run on the host (or in CI) with `mongomock` — no live MongoDB needed:
+Tests run on the host (or in CI) with `mongomock`. No live MongoDB needed:
 
 ```bash
 python -m venv .venv
