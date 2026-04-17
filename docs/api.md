@@ -42,6 +42,8 @@ If the identifier is already being processed, returns `200` with the existing `a
 
 Lists all artifacts.
 
+`status` is one of `"processing"`, `"downloading"`, `"success"`, or `"failed"`.
+
 **Response** (`200 OK`):
 
 ```json
