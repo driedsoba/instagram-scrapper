@@ -3,7 +3,7 @@ services:
     image: mongo:7
     container_name: instagram-scrapper-mongodb
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb_data:/data/db
     healthcheck:
@@ -23,9 +23,9 @@ services:
       --location /data
       --skipApiVersionCheck
     ports:
-      - "10000:10000"
-      - "10001:10001"
-      - "10002:10002"
+      - "127.0.0.1:10000:10000"
+      - "127.0.0.1:10001:10001"
+      - "127.0.0.1:10002:10002"
     volumes:
       - azurite_data:/data
     healthcheck:
@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: instagram-scrapper-functions
     ports:
-      - "7071:80"
+      - "127.0.0.1:7071:80"
     environment:
       FUNCTIONS_WORKER_RUNTIME: python
       AzureWebJobsFeatureFlags: EnableWorkerIndexing
