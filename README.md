@@ -134,11 +134,31 @@ Downloaded media is bind-mounted to `./blobs/` on the host, so files survive con
 
 ## Running Tests
 
-Tests run on the host (or in CI) with `mongomock`. No live MongoDB needed:
+Tests run on the host (or in CI) with `mongomock`. No live MongoDB needed.
+
+**macOS / Linux:**
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate         # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+**Windows (PowerShell):**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pytest
+```
+
+**Windows (Git Bash / WSL):**
+
+```bash
+python -m venv .venv
+source .venv/Scripts/activate
 pip install -r requirements-dev.txt
 pytest
 ```
